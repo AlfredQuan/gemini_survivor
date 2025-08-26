@@ -2,6 +2,7 @@ import pygame
 import random
 import math
 import numpy
+import json
 
 # --- 常量 ---
 SCREEN_WIDTH = 1280
@@ -10,44 +11,18 @@ PLAYER_SIZE = 40
 ENEMY_SIZE = 30
 TANK_ENEMY_SIZE = 50
 BOSS_ENEMY_SIZE = 100
-ORBIT_WEAPON_SIZE = 20
 XP_GEM_SIZE = 15
-PROJECTILE_SIZE = 10
 WORLD_SIZE = (3000, 3000)
-
-# --- 玩家初始属性 ---
-PLAYER_INITIAL_SPEED = 5
-PLAYER_INITIAL_HEALTH = 100
-
-# --- 敌人初始属性 ---
-ENEMY_INITIAL_SPEED = 2
-ENEMY_SPAWN_RATE = 1000
-
-# --- 武器初始属性 ---
-PROJECTILE_WEAPON_INITIAL_COOLDOWN = 1200
-PROJECTILE_SPEED = 10
-AXE_WEAPON_INITIAL_COOLDOWN = 3000
 
 # --- 音量设置 ---
 MUSIC_VOLUME = 0.3
 SFX_VOLUME = 0.5
 
 # --- 颜色 ---
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
-GREEN = (0, 255, 0)
-YELLOW = (255, 255, 255)
-GREY = (100, 100, 100)
-CYAN = (0, 255, 255)
-PURPLE = (128, 0, 128)
-DARK_GREEN = (0, 100, 0)
-ORANGE = (255, 165, 0)
-GOLD = (255, 215, 0)
-BROWN = (139, 69, 19)
-DARK_GREY = (40, 40, 40)
-LIGHT_BLUE = (173, 216, 230)
+WHITE = (255, 255, 255); BLACK = (0, 0, 0); RED = (255, 0, 0); BLUE = (0, 0, 255)
+GREEN = (0, 255, 0); YELLOW = (255, 255, 255); GREY = (100, 100, 100); CYAN = (0, 255, 255)
+PURPLE = (128, 0, 128); DARK_GREEN = (0, 100, 0); ORANGE = (255, 165, 0); GOLD = (255, 215, 0)
+BROWN = (139, 69, 19); DARK_GREY = (40, 40, 40); LIGHT_BLUE = (173, 216, 230)
 
 # --- 声音生成函数 ---
 def generate_sound(frequency, duration, sample_rate=44100):
@@ -64,21 +39,16 @@ def generate_sound(frequency, duration, sample_rate=44100):
 class Camera:
     def __init__(self, width, height):
         self.camera = pygame.Rect(0, 0, width, height)
-        self.width = width
-        self.height = height
+        self.width = width; self.height = height
 
-    def apply(self, rect):
-        return rect.move(self.camera.topleft)
-
-    def get_view_rect(self):
-        return pygame.Rect(-self.camera.x, -self.camera.y, SCREEN_WIDTH, SCREEN_HEIGHT)
+    def apply(self, rect): return rect.move(self.camera.topleft)
+    def get_view_rect(self): return pygame.Rect(-self.camera.x, -self.camera.y, SCREEN_WIDTH, SCREEN_HEIGHT)
 
     def update(self, target):
         x = -target.rect.centerx + int(SCREEN_WIDTH / 2)
         y = -target.rect.centery + int(SCREEN_HEIGHT / 2)
         x = min(0, x); y = min(0, y)
-        x = max(-(self.width - SCREEN_WIDTH), x)
-        y = max(-(self.height - SCREEN_HEIGHT), y)
+        x = max(-(self.width - SCREEN_WIDTH), x); y = max(-(self.height - SCREEN_HEIGHT), y)
         self.camera = pygame.Rect(x, y, self.width, self.height)
 
 # --- 伤害数字类 ---
@@ -98,7 +68,7 @@ class DamageNumber(pygame.sprite.Sprite):
 
 # --- 玩家类 ---
 class Player(pygame.sprite.Sprite):
-    def __init__(self, game):
+    def __init__(self, game, config):
         super().__init__()
         self.game = game
         self.image = pygame.Surface([PLAYER_SIZE, PLAYER_SIZE], pygame.SRCALPHA)
@@ -106,15 +76,15 @@ class Player(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, WHITE, (PLAYER_SIZE // 2, 10), 8)
         self.rect = self.image.get_rect(center=(WORLD_SIZE[0] // 2, WORLD_SIZE[1] // 2))
         
-        self.speed = PLAYER_INITIAL_SPEED
-        self.max_health = PLAYER_INITIAL_HEALTH
+        self.speed = config['player_stats']['speed']
+        self.max_health = config['player_stats']['health']
         self.health = self.max_health
         self.level = 1; self.experience = 0; self.experience_to_next_level = 10
         self.last_move_dir = pygame.math.Vector2(0, -1)
         self.magnet_radius = 0; self.damage_multiplier = 1.0; self.area_multiplier = 1.0
         self.invincible = False
 
-        self.upgrades = {"speed": 1, "max_health": 1, "magnet": 0, "spinach": 0, "candelabrador": 0}
+        self.upgrades = {key: 0 for key in game.config['passive_data']}
         self.items = {}
 
     def take_damage(self, amount):
@@ -162,9 +132,10 @@ class Player(pygame.sprite.Sprite):
 
 # --- 敌人基类 ---
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, player, speed):
-        super().__init__(); self.player = player; self.speed = speed
-        self.health = 1; self.damage = 10; self.xp_value = 5
+    def __init__(self, player, stats):
+        super().__init__(); self.player = player
+        self.health = stats['health']; self.speed = stats['speed']
+        self.damage = stats['damage']; self.xp_value = stats['xp']
         self.image = pygame.Surface([ENEMY_SIZE, ENEMY_SIZE], pygame.SRCALPHA)
         pygame.draw.circle(self.image, RED, (ENEMY_SIZE // 2, ENEMY_SIZE // 2), ENEMY_SIZE // 2)
         pygame.draw.circle(self.image, BLACK, (ENEMY_SIZE // 2 - 5, ENEMY_SIZE // 2 - 5), 3)
@@ -191,18 +162,16 @@ class Enemy(pygame.sprite.Sprite):
             direction.normalize_ip(); self.rect.move_ip(direction * self.speed)
 
 class TankEnemy(Enemy):
-    def __init__(self, player, speed):
-        super().__init__(player, speed)
-        self.health = 5; self.speed = speed * 0.7; self.xp_value = 20; self.damage = 25
+    def __init__(self, player, stats):
+        super().__init__(player, stats)
         self.image = pygame.Surface([TANK_ENEMY_SIZE, TANK_ENEMY_SIZE], pygame.SRCALPHA)
         pygame.draw.rect(self.image, PURPLE, (0, 0, TANK_ENEMY_SIZE, TANK_ENEMY_SIZE), border_radius=8)
         pygame.draw.rect(self.image, BLACK, (10, 10, 10, 10))
         self.rect = self.image.get_rect(); self.spawn_at_edge()
 
 class BossEnemy(Enemy):
-    def __init__(self, player, speed):
-        super().__init__(player, speed)
-        self.health = 100; self.speed = speed * 0.5; self.xp_value = 200; self.damage = 50
+    def __init__(self, player, stats):
+        super().__init__(player, stats)
         self.image = pygame.Surface([BOSS_ENEMY_SIZE, BOSS_ENEMY_SIZE], pygame.SRCALPHA)
         pygame.draw.circle(self.image, ORANGE, (BOSS_ENEMY_SIZE // 2, BOSS_ENEMY_SIZE // 2), BOSS_ENEMY_SIZE // 2)
         pygame.draw.polygon(self.image, BLACK, [(30, 30), (40, 20), (50, 30)])
@@ -220,13 +189,12 @@ class Weapon(pygame.sprite.Sprite):
 class OrbitWeapon(Weapon):
     def __init__(self, player, game):
         super().__init__(player, game); self.name = "orbit_weapon"
-        self.damage = 10; self.orbiters = pygame.sprite.Group()
-        self.orbiter_count = 0; self.orbiter_speed = 2; self.orbiter_radius = 100; self.orbiter_size = 20
-        self.count_level = 0; self.speed_level = 0; self.size_level = 0
-        self.angle = 0
-        self.upgrade_options = {
-            "count": ("Orbit: +1 Count", 5), "speed": ("Orbit: +Speed", 5), "size": ("Orbit: +Size", 5)
-        }
+        self.data = game.config['weapon_data'][self.name]
+        self.damage = self.data['damage']; self.orbiters = pygame.sprite.Group()
+        self.orbiter_count = 0; self.orbiter_speed = self.data['base_speed']
+        self.orbiter_radius = self.data['base_radius']; self.orbiter_size = self.data['base_size']
+        self.count_level = 0; self.speed_level = 0; self.size_level = 0; self.angle = 0
+        self.upgrade_options = {key: (value['text'], value['max_level']) for key, value in self.data['upgrades'].items()}
         self.icon.fill(GREEN); pygame.draw.circle(self.icon, WHITE, (20, 20), 15, 3)
 
     @property
@@ -247,7 +215,6 @@ class OrbitWeapon(Weapon):
 
     def update_orbiter_visuals(self):
         for orbiter in self.orbiters: orbiter.update_visuals()
-
     def update(self):
         self.angle = (self.angle + self.orbiter_speed) % 360
         self.orbiters.update()
@@ -271,10 +238,12 @@ class OrbitingObject(pygame.sprite.Sprite):
 
 class ProjectileWeapon(Weapon):
     def __init__(self, player, game):
-        super().__init__(player, game); self.name = "projectile_weapon"; self.cooldown = PROJECTILE_WEAPON_INITIAL_COOLDOWN
+        super().__init__(player, game); self.name = "projectile_weapon"
+        self.data = game.config['weapon_data'][self.name]
+        self.cooldown = self.data['base_cooldown']
         self.level = 0; self.last_shot_time = pygame.time.get_ticks()
         pygame.draw.circle(self.icon, CYAN, (20, 20), 15)
-        self.upgrade_options = {"cooldown": ("Projectile: -Cooldown", 5)}
+        self.upgrade_options = {"cooldown": (self.data['name'] + ": -Cooldown", self.data['max_level'])}
 
     def update(self):
         self.rect.center = self.player.rect.center; now = pygame.time.get_ticks()
@@ -287,11 +256,11 @@ class ProjectileWeapon(Weapon):
         target = self.find_nearest_enemy()
         if target:
             self.game.sounds['shoot'].play()
-            self.game.add_sprite(Projectile(self.rect.center, target.rect.center, self.player.damage_multiplier), self.game.projectiles)
+            self.game.add_sprite(Projectile(self.game, self.rect.center, target.rect.center, self.player.damage_multiplier, self.data), self.game.projectiles)
 
 class SuperProjectileWeapon(ProjectileWeapon):
     def __init__(self, player, game):
-        super().__init__(player, game); self.name = "super_projectile_weapon"; self.cooldown = PROJECTILE_WEAPON_INITIAL_COOLDOWN * 0.5
+        super().__init__(player, game); self.name = "super_projectile_weapon"; self.cooldown *= 0.5
         self.icon.fill(GOLD); pygame.draw.circle(self.icon, CYAN, (20, 20), 15)
         self.upgrade_options = {}
 
@@ -301,16 +270,19 @@ class SuperProjectileWeapon(ProjectileWeapon):
             self.game.sounds['shoot'].play(); direction = pygame.math.Vector2(target.rect.center) - self.rect.center
             for angle in [-20, 0, 20]:
                 rotated_dir = direction.rotate(angle); target_pos = self.rect.center + rotated_dir
-                self.game.add_sprite(Projectile(self.rect.center, target_pos, self.player.damage_multiplier), self.game.projectiles)
+                self.game.add_sprite(Projectile(self.game, self.rect.center, target_pos, self.player.damage_multiplier, self.data), self.game.projectiles)
 
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, start_pos, target_pos, damage_multiplier):
-        super().__init__(); self.image = pygame.Surface([PROJECTILE_SIZE, PROJECTILE_SIZE], pygame.SRCALPHA)
-        pygame.draw.circle(self.image, CYAN, (PROJECTILE_SIZE // 2, PROJECTILE_SIZE // 2), PROJECTILE_SIZE // 2)
-        self.rect = self.image.get_rect(center=start_pos); self.damage = 1 * damage_multiplier
+    def __init__(self, game, start_pos, target_pos, damage_multiplier, data):
+        super().__init__(); self.game = game
+        size = data['size']
+        self.image = pygame.Surface([size, size], pygame.SRCALPHA)
+        pygame.draw.circle(self.image, CYAN, (size // 2, size // 2), size // 2)
+        self.rect = self.image.get_rect(center=start_pos); self.damage = data['damage'] * damage_multiplier
         direction = pygame.math.Vector2(target_pos) - start_pos
-        if direction.length_squared() > 0: self.velocity = direction.normalize() * PROJECTILE_SPEED
-        else: self.velocity = pygame.math.Vector2(0, -PROJECTILE_SPEED)
+        speed = self.game.config['game_settings']['projectile_speed']
+        if direction.length_squared() > 0: self.velocity = direction.normalize() * speed
+        else: self.velocity = pygame.math.Vector2(0, -speed)
 
     def update(self):
         self.rect.move_ip(self.velocity)
@@ -318,10 +290,12 @@ class Projectile(pygame.sprite.Sprite):
 
 class AxeWeapon(Weapon):
     def __init__(self, player, game):
-        super().__init__(player, game); self.name = "axe_weapon"; self.cooldown = AXE_WEAPON_INITIAL_COOLDOWN
+        super().__init__(player, game); self.name = "axe_weapon"
+        self.data = game.config['weapon_data'][self.name]
+        self.cooldown = self.data['base_cooldown']
         self.level = 0; self.last_shot_time = pygame.time.get_ticks()
         pygame.draw.rect(self.icon, GREY, (18, 5, 4, 30)); pygame.draw.rect(self.icon, LIGHT_BLUE, (5, 10, 30, 20))
-        self.upgrade_options = {"cooldown": ("Axe: -Cooldown", 5)}
+        self.upgrade_options = {"cooldown": (self.data['name'] + ": -Cooldown", self.data['max_level'])}
 
     def update(self):
         self.rect.center = self.player.rect.center; now = pygame.time.get_ticks()
@@ -329,7 +303,7 @@ class AxeWeapon(Weapon):
     
     def shoot(self):
         self.game.sounds['shoot'].play()
-        self.game.add_sprite(Axe(self.rect.center, self.player.damage_multiplier), self.game.axes)
+        self.game.add_sprite(Axe(self.game, self.rect.center, self.player.damage_multiplier, self.data), self.game.axes)
 
 class DeathSpiralWeapon(AxeWeapon):
     def __init__(self, player, game):
@@ -342,18 +316,20 @@ class DeathSpiralWeapon(AxeWeapon):
         for i in range(8):
             angle = i * (360 / 8)
             direction = pygame.math.Vector2(1, 0).rotate(angle)
-            self.game.add_sprite(Axe(self.rect.center, self.player.damage_multiplier, initial_velocity=direction * 5), self.game.axes)
+            self.game.add_sprite(Axe(self.game, self.rect.center, self.player.damage_multiplier, self.data, initial_velocity=direction * 5), self.game.axes)
 
 class Axe(pygame.sprite.Sprite):
-    def __init__(self, start_pos, damage_multiplier, initial_velocity=None):
-        super().__init__(); self.original_image = pygame.Surface([20, 20], pygame.SRCALPHA)
-        pygame.draw.rect(self.original_image, GREY, (8, 0, 4, 20)); pygame.draw.rect(self.original_image, LIGHT_BLUE, (0, 4, 20, 12))
+    def __init__(self, game, start_pos, damage_multiplier, data, initial_velocity=None):
+        super().__init__(); self.game = game
+        size = data['size']
+        self.original_image = pygame.Surface([size, size], pygame.SRCALPHA)
+        pygame.draw.rect(self.original_image, GREY, (size*0.4, 0, size*0.2, size)); pygame.draw.rect(self.original_image, LIGHT_BLUE, (0, size*0.2, size, size*0.6))
         self.image = self.original_image; self.rect = self.image.get_rect(center=start_pos)
-        self.damage = 5 * damage_multiplier; self.pos = pygame.math.Vector2(start_pos)
+        self.damage = data['damage'] * damage_multiplier; self.pos = pygame.math.Vector2(start_pos)
         if initial_velocity: self.velocity = initial_velocity
         else: self.velocity = pygame.math.Vector2(random.choice([-1, 1]) * 4, -12)
         self.gravity = 0.5; self.angle = 0; self.rot_speed = 10 * random.choice([-1, 1])
-        self.pierce = 3; self.hit_enemies = set()
+        self.pierce = data['pierce']; self.hit_enemies = set()
 
     def update(self):
         self.velocity.y += self.gravity; self.pos += self.velocity; self.rect.center = self.pos
@@ -387,10 +363,18 @@ class Game:
     def __init__(self):
         pygame.mixer.pre_init(44100, -16, 2, 512); pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("类吸血鬼幸存者游戏 - 最终修复版"); self.clock = pygame.time.Clock()
+        pygame.display.set_caption("类吸血鬼幸存者游戏 - 数据驱动版"); self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 50); self.small_font = pygame.font.Font(None, 36)
         self.ui_font = pygame.font.Font(None, 24); self.running = True
-        self.load_sounds(); self.create_item_icons(); self.setup_game()
+        self.load_data(); self.load_sounds(); self.create_item_icons(); self.setup_game()
+
+    def load_data(self):
+        try:
+            with open('config.json', 'r') as f:
+                self.config = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            print("错误：config.json 文件未找到或格式错误！")
+            self.config = {}
 
     def create_item_icons(self):
         self.item_icons = {"spinach": pygame.Surface([40, 40], pygame.SRCALPHA), "magnet": pygame.Surface([40, 40], pygame.SRCALPHA), "candelabrador": pygame.Surface([40, 40], pygame.SRCALPHA)}
@@ -411,19 +395,19 @@ class Game:
 
     def setup_game(self):
         self.game_over = False; self.level_up_state = False; self.paused = False; self.score = 0
-        self.start_time = pygame.time.get_ticks(); self.enemy_current_speed = ENEMY_INITIAL_SPEED
-        self.enemy_current_spawn_rate = ENEMY_SPAWN_RATE
+        self.start_time = pygame.time.get_ticks(); self.enemy_current_speed = self.config['enemy_stats']['enemy']['speed']
+        self.enemy_current_spawn_rate = self.config['game_settings']['initial_enemy_spawn_rate']
         
         self.all_sprites = pygame.sprite.Group(); self.enemies = pygame.sprite.Group()
         self.active_weapons = pygame.sprite.Group()
         self.projectiles = pygame.sprite.Group(); self.axes = pygame.sprite.Group(); self.orbiters = pygame.sprite.Group()
         self.experience_gems = pygame.sprite.Group(); self.treasure_chests = pygame.sprite.Group()
 
-        self.player = Player(self); self.add_sprite(self.player)
+        self.player = Player(self, self.config); self.add_sprite(self.player)
         self.camera = Camera(WORLD_SIZE[0], WORLD_SIZE[1]); self.background = self.create_background()
 
         self.weapon_pool = {"orbit_weapon": OrbitWeapon, "axe_weapon": AxeWeapon}
-        self.acquired_base_weapons = set() # 已修复：追踪已获取的基础武器
+        self.acquired_base_weapons = set()
         self.weapon_instances = {}
 
         main_weapon = ProjectileWeapon(self.player, self)
@@ -474,10 +458,10 @@ class Game:
             if self.paused: continue
 
             if event.type == self.enemy_spawn_timer:
-                if random.random() < 0.2: self.add_sprite(TankEnemy(self.player, self.enemy_current_speed), self.enemies)
-                else: self.add_sprite(Enemy(self.player, self.enemy_current_speed), self.enemies)
+                enemy_type = "tank" if random.random() < 0.2 else "enemy"
+                self.add_sprite(TankEnemy(self.player, self.config['enemy_stats'][enemy_type]) if enemy_type == 'tank' else Enemy(self.player, self.config['enemy_stats'][enemy_type]), self.enemies)
             if event.type == self.difficulty_timer: self.increase_difficulty()
-            if event.type == self.boss_spawn_timer: self.add_sprite(BossEnemy(self.player, self.enemy_current_speed), self.enemies)
+            if event.type == self.boss_spawn_timer: self.add_sprite(BossEnemy(self.player, self.config['enemy_stats']['boss']), self.enemies)
 
     def increase_difficulty(self):
         self.enemy_current_speed *= 1.1; self.enemy_current_spawn_rate = max(200, int(self.enemy_current_spawn_rate * 0.9))
@@ -491,19 +475,17 @@ class Game:
                 current_level = 0
                 if isinstance(weapon, OrbitWeapon): current_level = getattr(weapon, f"{key}_level")
                 else: current_level = weapon.level
-                
                 if current_level < max_level:
                     possible_upgrades.append({"type": "weapon_upgrade", "weapon": weapon, "key": key, "text": text, "level": current_level})
         
         if len(self.weapon_instances) < 6:
             for name, weapon_class in self.weapon_pool.items():
-                if name not in self.acquired_base_weapons and name not in self.weapon_instances: # 已修复
-                    possible_upgrades.append({"type": "new_weapon", "name": name, "class": weapon_class, "text": f"Get: {name.replace('_', ' ').title()}", "level": 0})
+                if name not in self.acquired_base_weapons and name not in self.weapon_instances:
+                    possible_upgrades.append({"type": "new_weapon", "name": name, "class": weapon_class, "text": f"Get: {weapon_class(self.player, self).data['name']}", "level": 0})
 
-        passives = {"spinach": ("Damage Up", 5), "candelabrador": ("Area Up", 5), "magnet": ("Magnet Radius", 5), "speed": ("Player Speed", 5), "max_health": ("Max Health", 5)}
-        for key, (text, max_level) in passives.items():
-            if self.player.upgrades[key] < max_level:
-                possible_upgrades.append({"type": "passive", "key": key, "text": text, "level": self.player.upgrades[key]})
+        for key, data in self.config['passive_data'].items():
+            if self.player.upgrades[key] < data['max_level']:
+                possible_upgrades.append({"type": "passive", "key": key, "text": data['name'], "level": self.player.upgrades[key]})
         
         possible_upgrades.append({"type": "heal", "key": "heal", "text": "Restore 30% Health", "level": 0})
         self.level_up_choices = random.sample(possible_upgrades, min(len(possible_upgrades), 4))
@@ -515,7 +497,7 @@ class Game:
             self.weapon_instances[choice["name"]] = new_weapon
             self.add_sprite(new_weapon, self.active_weapons)
             self.player.items[new_weapon.name] = new_weapon
-            self.acquired_base_weapons.add(choice["name"]) # 已修复
+            self.acquired_base_weapons.add(choice["name"])
             if isinstance(new_weapon, OrbitWeapon):
                 new_weapon.add_orbiter(); new_weapon.count_level = 1
             else:
@@ -524,21 +506,23 @@ class Game:
             weapon = choice["weapon"]
             key = choice["key"]
             if isinstance(weapon, OrbitWeapon):
+                upgrade_data = weapon.data['upgrades'][key]
                 if key == "count": weapon.add_orbiter(); weapon.count_level += 1
-                elif key == "speed": weapon.orbiter_speed += 0.5; weapon.speed_level += 1
-                elif key == "size": weapon.orbiter_size += 4; weapon.size_level += 1; weapon.update_orbiter_visuals()
+                elif key == "speed": weapon.orbiter_speed += upgrade_data['effect']; weapon.speed_level += 1
+                elif key == "size": weapon.orbiter_size += upgrade_data['effect']; weapon.size_level += 1; weapon.update_orbiter_visuals()
             else:
-                 if key == "cooldown": weapon.cooldown = max(100, int(weapon.cooldown * 0.85))
+                 weapon.cooldown *= (1 - weapon.data['upgrade']['cooldown_reduction_percent'])
                  weapon.level += 1
         elif type == "passive":
             key = choice["key"]
-            if key == "speed": self.player.speed += 1
-            elif key == "max_health": self.player.max_health += 20; self.player.heal(20)
-            elif key == "magnet": self.player.magnet_radius += 60
-            elif key == "spinach": self.player.damage_multiplier += 0.1; self.player.items['spinach'] = self.player.upgrades['spinach'] + 1
+            effect = self.config['passive_data'][key]['effect']
+            if key == "speed": self.player.speed += effect
+            elif key == "max_health": self.player.max_health += effect; self.player.heal(effect)
+            elif key == "magnet": self.player.magnet_radius += effect
+            elif key == "spinach": self.player.damage_multiplier += effect; self.player.items['spinach'] = self.player.upgrades['spinach'] + 1
             elif key == "candelabrador": 
-                self.player.area_multiplier += 0.1; self.player.items['candelabrador'] = self.player.upgrades['candelabrador'] + 1
-                if "orbit_weapon" in self.weapon_instances: # 已修复
+                self.player.area_multiplier += effect; self.player.items['candelabrador'] = self.player.upgrades['candelabrador'] + 1
+                if "orbit_weapon" in self.weapon_instances:
                     self.weapon_instances["orbit_weapon"].update_orbiter_visuals()
             self.player.upgrades[key] += 1
         elif type == "heal": self.player.heal(self.player.max_health * 0.3)
@@ -546,12 +530,15 @@ class Game:
         self.level_up_state = False; self.check_for_evolutions()
 
     def check_for_evolutions(self):
-        proj_weapon = self.weapon_instances.get("projectile_weapon")
-        if proj_weapon and proj_weapon.level >= 5 and self.player.upgrades["spinach"] >= 5:
-            self.evolve_weapon("projectile_weapon", SuperProjectileWeapon)
-        axe_weapon = self.weapon_instances.get("axe_weapon")
-        if axe_weapon and axe_weapon.level >= 5 and self.player.upgrades["candelabrador"] >= 5:
-            self.evolve_weapon("axe_weapon", DeathSpiralWeapon)
+        recipes = self.config['evolution_recipes']
+        for evolved_name, recipe in recipes.items():
+            base_weapon = self.weapon_instances.get(recipe['base_weapon'])
+            passive_name = recipe['passive_item']
+            if base_weapon and base_weapon.level >= base_weapon.data['max_level'] and self.player.upgrades[passive_name] >= self.config['passive_data'][passive_name]['max_level']:
+                evolved_class_name = evolved_name.replace('_', ' ').title().replace(' ', '')
+                if evolved_class_name in globals():
+                    evolved_class = globals()[evolved_class_name]
+                    self.evolve_weapon(recipe['base_weapon'], evolved_class)
 
     def evolve_weapon(self, old_name, evolved_class):
         old_weapon = self.weapon_instances.pop(old_name)
@@ -573,34 +560,26 @@ class Game:
     def update(self):
         self.all_sprites.update(); self.camera.update(self.player)
         
-        # --- 已修复：独立的碰撞检测逻辑 ---
-        # 1. 普通弹幕
         projectile_hits = pygame.sprite.groupcollide(self.projectiles, self.enemies, True, False)
         for projectile, enemies_hit in projectile_hits.items():
-            if enemies_hit:
-                if enemies_hit[0].take_damage(projectile.damage):
-                    self.handle_enemy_death(enemies_hit[0])
+            if enemies_hit and enemies_hit[0].take_damage(projectile.damage):
+                self.handle_enemy_death(enemies_hit[0])
 
-        # 2. 穿透性斧子
         for axe in self.axes:
-            enemies_hit = pygame.sprite.spritecollide(axe, self.enemies, False)
-            for enemy in enemies_hit:
+            for enemy in pygame.sprite.spritecollide(axe, self.enemies, False):
                 if enemy not in axe.hit_enemies:
                     axe.hit_enemies.add(enemy)
                     if enemy.take_damage(axe.damage): self.handle_enemy_death(enemy)
                     if len(axe.hit_enemies) >= axe.pierce: break
         
-        # 3. 环绕物
         for orbiter in self.orbiters:
             if not hasattr(orbiter, 'hit_cooldown'): orbiter.hit_cooldown = {}
             now = pygame.time.get_ticks()
-            enemies_hit = pygame.sprite.spritecollide(orbiter, self.enemies, False)
-            for enemy in enemies_hit:
-                if enemy not in orbiter.hit_cooldown or now - orbiter.hit_cooldown[enemy] > 500: # 0.5秒冷却
+            for enemy in pygame.sprite.spritecollide(orbiter, self.enemies, False):
+                if enemy not in orbiter.hit_cooldown or now - orbiter.hit_cooldown[enemy] > 500:
                     orbiter.hit_cooldown[enemy] = now
                     if enemy.take_damage(orbiter.damage * self.player.damage_multiplier):
                         self.handle_enemy_death(enemy)
-            # 清理已死亡敌人的冷却记录
             dead_enemies = [e for e in orbiter.hit_cooldown if not e.alive()]
             for e in dead_enemies: del orbiter.hit_cooldown[e]
         

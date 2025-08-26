@@ -1,0 +1,61 @@
+{
+  "player_stats": {
+    "speed": 5,
+    "health": 100
+  },
+  "game_settings": {
+    "initial_enemy_spawn_rate": 1000,
+    "projectile_speed": 10
+  },
+  "enemy_stats": {
+    "enemy": {"health": 1, "speed": 2, "damage": 10, "xp": 5},
+    "tank": {"health": 5, "speed": 1.4, "damage": 25, "xp": 20},
+    "boss": {"health": 100, "speed": 1, "damage": 50, "xp": 200}
+  },
+  "weapon_data": {
+    "projectile_weapon": {
+      "name": "Projectile",
+      "max_level": 5,
+      "damage": 1,
+      "size": 10,
+      "base_cooldown": 1200,
+      "upgrade": {"cooldown_reduction_percent": 0.15}
+    },
+    "axe_weapon": {
+      "name": "Axe",
+      "max_level": 5,
+      "damage": 5,
+      "pierce": 3,
+      "size": 20,
+      "base_cooldown": 3000,
+      "upgrade": {"cooldown_reduction_percent": 0.15}
+    },
+    "orbit_weapon": {
+      "name": "Orbit",
+      "damage": 10,
+      "base_speed": 2,
+      "base_radius": 100,
+      "base_size": 20,
+      "upgrades": {
+        "count": {"max_level": 5, "text": "Orbit: +1 Count"},
+        "speed": {"max_level": 5, "text": "Orbit: +Speed", "effect": 0.5},
+        "size": {"max_level": 5, "text": "Orbit: +Size", "effect": 4}
+      }
+    }
+  },
+  "passive_data": {
+    "spinach": {"name": "Damage Up", "max_level": 5, "effect": 0.1},
+    "candelabrador": {"name": "Area Up", "max_level": 5, "effect": 0.1},
+    "magnet": {"name": "Magnet Radius", "max_level": 5, "effect": 60},
+    "speed": {"name": "Player Speed", "max_level": 5, "effect": 1},
+    "max_health": {"name": "Max Health", "max_level": 5, "effect": 20}
+  },
+  "evolution_recipes": {
+    "super_projectile_weapon": {
+      "base_weapon": "projectile_weapon", "passive_item": "spinach"
+    },
+    "death_spiral": {
+      "base_weapon": "axe_weapon", "passive_item": "candelabrador"
+    }
+  }
+}
